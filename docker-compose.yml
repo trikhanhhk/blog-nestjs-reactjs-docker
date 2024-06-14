@@ -1,0 +1,117 @@
+version: '3'
+services:
+  postgres:
+    image: "postgres:13"
+    container_name: postgres-database
+    environment:
+      POSTGRES_DB: khablog_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432" #real:container
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # postgres-test:
+  #   image: "postgres:13"
+  #   container_name: postgres-database-test
+  #   environment:
+  #     POSTGRES_DB: khablog_db
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: postgres
+  #   ports:
+  #     - "5455:5432" #real:container
+
+  redis:
+    image: "redis:latest"
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+
+  nestjs-app:
+    build:
+      dockerfile: Dockerfile
+      context: ./api-app/
+    command: npm run start:dev
+    container_name: api-app
+    ports:
+      - "3000:3000"
+    depends_on:
+      #điều kiện để chạy
+      - postgres
+      # - postgres-test
+      - redis
+    volumes:
+      - ./api-app:/usr/src/app:rw
+      # - /usr/src/app/node_modules
+    environment:
+      POSTGRES_HOST: postgres
+      # POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: khablog_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+  react-app:
+    build:
+      dockerfile: Dockerfile
+      context: ./fe/
+    command: npm start
+    container_name: font-end-app
+    ports:
+      - "9090:3000"
+    volumes:
+      - ./fe:/usr/src/app:rw
+      # - /usr/src/app/node_modules
+
+  nginx:
+    image: nginx:latest
+    container_name: my-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./api-app/upload/images:/usr/src/app/upload/images:ro
+      - ./api-app/upload/slider:/usr/src/app/upload/slider:ro
+      - ./certificate:/etc/nginx/certificate:ro
+    depends_on:
+      - nestjs-app
+
+  minio:
+    image: minio/minio
+    container_name: minio-app
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio@123
+    command: server --console-address ":9001" /data
+
+  smtp:
+    platform: linux/x86_64
+    image: mailhog/mailhog
+    container_name: smtp
+    logging:
+      driver: 'none'
+    ports:
+      - "8003:1025"
+      - "8100:8025"
+
+volumes:
+  postgres_data: # lưu lại ngay cả khi container bị xóa, build lại
+  minio_data:
